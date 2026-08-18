@@ -1,4 +1,4 @@
-# research/ — Computational Materials Science Scripts
+# analysis/ — Computational Materials Science Scripts
 
 A collection of Python and shell scripts for VASP-based computational
 materials science workflows: energy analysis, phonon calculation,
