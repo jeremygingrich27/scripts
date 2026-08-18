@@ -1,0 +1,13 @@
+# phonons — single-point phonon static run: stage relax/ outputs into phonons/.
+
+mkdir -p phonons
+cp "relax/CONTCAR" "phonons/POSCAR"
+cp "relax/POTCAR" "phonons/POTCAR"
+cp "relax/CHGCAR" "phonons/CHGCAR"
+cp "phonons_INCAR" "phonons/INCAR"
+cd phonons
+echo -e "102\n2\n0.03" | vaspkit
+echo -e "303" | vaspkit
+mv KPATH.in QPOINTS
+	
+ibrun vasp_std > phonons.out

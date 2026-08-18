@@ -1,0 +1,127 @@
+# Run relax setup#
+
+if [[ -d "relax" ]]; then
+	echo "relax directory already exists"
+else
+	cp "original_directory/POSCAR" "relax/POSCAR"
+	cp "original_directory/KPOINTS" "relax/KPOINTS"
+	cp "original_directory/POTCAR" "relax/POTCAR"
+	sed '/^ISIF/c\ISIF = 3' relax_INCAR > relax/INCAR
+
+fi
+
+cd "relax" || exit
+
+MAX_ITER=50
+ITER=0
+LOG_FILE="relaxation.log"
+OUTPUT_DIR="relaxation_outputs"
+result="false"  # Initialize result variable
+SKIP_RELAX=0    # Flag to skip the loop if already converged
+energy="N/A"    # Initialize so final status can still print
+
+# Check for previous run and restore if found
+if [[ -f "$LOG_FILE" && -d "$OUTPUT_DIR" ]]; then
+    last_iter=$(ls -1 "$OUTPUT_DIR" 2>/dev/null | grep "^iter_" | sed 's/iter_//' | sort -n | tail -1)
+    if [[ -n "$last_iter" && "$last_iter" -gt 0 ]]; then
+        last_status=$(grep "^$last_iter " "$LOG_FILE" | tail -1 | awk '{print $4}')
+        if [[ "$last_status" == "CONVERGED" ]]; then
+            echo "Previous run already converged at iteration $last_iter"
+            result="true"
+            ITER=$last_iter
+            SKIP_RELAX=1
+        else
+            last_iter_dir="$OUTPUT_DIR/iter_$last_iter"
+            if [[ -f "$last_iter_dir/CONTCAR" ]]; then
+                cp "$last_iter_dir/CONTCAR" POSCAR
+                ITER=$last_iter
+            fi
+        fi
+    fi
+fi
+
+# Initialize logging and directories (only if new run)
+mkdir -p "$OUTPUT_DIR"
+if [[ $ITER -eq 0 ]]; then
+    {
+        echo "VASP Relaxation Log - $(date)"
+        echo "----------------------------------------"
+        printf "%-6s %-15s %-15s %s\n" "Iter" "Energy(eV)" "Time(sec)" "Status"
+        echo "----------------------------------------"
+    } > "$LOG_FILE"
+fi
+
+# Main relaxation loop (only if not already converged)
+if [[ $SKIP_RELAX -eq 0 ]]; then
+    while (( ITER < MAX_ITER )); do
+        ((ITER++))
+
+        # Run VASP
+        echo -e "102\n2\n0.03" | vaspkit
+        ibrun vasp_std > relax.out 2>&1
+        if [[ $? -ne 0 ]]; then
+            echo "$ITER VASP failed" >> "$LOG_FILE"
+            break
+        fi
+
+        # Check for CONTCAR
+        if [[ ! -f CONTCAR ]]; then
+            echo "$ITER CONTCAR missing" >> "$LOG_FILE"
+            break
+        fi
+
+        # Create iteration directory
+        iter_dir="$OUTPUT_DIR/iter_$ITER"
+        mkdir -p "$iter_dir"
+        cp {POSCAR,CONTCAR,OUTCAR,OSZICAR} "$iter_dir/"
+
+        # Extract energy
+        energy=$(grep "free  energy   TOTEN" OUTCAR | tail -1 | awk '{print $5}')
+        energy=${energy:-N/A}
+
+        # Extract elapsed time
+        elapsed_time=$(grep "Elapsed time (sec):" OUTCAR | tail -1 | awk '{print $4}')
+        elapsed_time=${elapsed_time:-N/A}
+
+        # Compare structures (clean whitespace)
+        result=$(bash ~/scripts/structure/relax/compare_poscar_2_contcar.sh 1e-8 | tr -d '[:space:]')
+        if [[ "$result" != "true" && "$result" != "false" ]]; then
+            echo "$ITER Comparison failed" >> "$LOG_FILE"
+            result="false"
+            break
+        fi
+
+        # Log status
+        status=$([[ "$result" == "true" ]] && echo "CONVERGED" || echo "CONTINUE")
+        printf "%-6d %-15s %-15s %s\n" "$ITER" "$energy" "$elapsed_time" "$status" >> "$LOG_FILE"
+
+        # Break if converged
+        if [[ "$result" == "true" ]]; then
+            break
+        fi
+
+        # Update POSCAR for next iteration
+        cp CONTCAR POSCAR
+    done
+else
+    # Load final energy from last iteration directory
+    last_iter_dir="$OUTPUT_DIR/iter_$ITER"
+    if [[ -f "$last_iter_dir/OUTCAR" ]]; then
+        energy=$(grep "free  energy   TOTEN" "$last_iter_dir/OUTCAR" | tail -1 | awk '{print $5}')
+        energy=${energy:-N/A}
+    fi
+fi
+
+# Final status
+
+if [[ $SKIP_RELAX -eq 0 ]]; then 
+{
+    echo "----------------------------------------"
+    if [[ "$result" == "true" ]]; then
+        echo "Converged after $ITER iterations"
+    else
+        echo "Stopped after $ITER iterations"
+    fi
+    echo "Final energy: $energy eV"
+} | tee -a "$LOG_FILE"
+fi

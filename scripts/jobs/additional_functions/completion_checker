@@ -1,0 +1,27 @@
+# Extract NSW from INCAR
+NSW=$(awk '/^NSW/ {print $3}' INCAR)
+NSW=${NSW:-0}  # Default to 0 if not present
+
+# Determine convergence status based on NSW
+if [[ "$NSW" -gt 0 ]]; then
+    # Relaxation run
+    if grep -q "reached required accuracy" OUTCAR; then
+        conv_status="ionic_converged"
+        touch COMPLETED
+    elif grep -q "General timing and accounting" OUTCAR; then
+        conv_status="relax_complete_but_not_converged"
+        touch COMPLETED
+    else
+        conv_status="failed"
+    fi
+else
+    # Static run
+    if grep -q "General timing and accounting" OUTCAR; then
+        conv_status="static_completed"
+        touch COMPLETED
+    else
+        conv_status="failed"
+    fi
+fi
+
+echo "Job status: $conv_status"

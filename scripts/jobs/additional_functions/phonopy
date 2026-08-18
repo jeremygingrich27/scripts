@@ -1,0 +1,31 @@
+module purge
+module load gcc/13.2.0  # phonopy/python dependencies built with a newer GCC
+
+# Activate the Anaconda phonopy env
+source /work/10117/jerging27/ls6/anaconda3/etc/profile.d/conda.sh
+conda activate phonopy
+
+# Prepend Anaconda's own lib directory so it uses the right libstdc++
+export LD_LIBRARY_PATH="/work/10117/jerging27/ls6/anaconda3/lib:$LD_LIBRARY_PATH"
+CURRENT_DIR="$PWD"
+for phonons in *phonons/ ; do
+        echo "$phonons"
+        cd "$phonons"
+
+        phonopy -d --dim 1 1 1
+
+        # Extract forces from vasprun.xml
+        phonopy --fc vasprun.xml
+
+        # Generate KPOINTS path using vaspkit
+        echo -e "305\n3" | vaspkit
+
+        # Modify DIM and MP lines in KPATH.phonopy for band structure calculation
+        sed -i '/^DIM/s/.*/DIM = 1 1 1/' KPATH.phonopy
+        sed -i '/^MP =/s/.*/MP = 20 20 20/' KPATH.phonopy
+        echo "PRIMITIVE_AXES = AUTO" >> KPATH.phonopy
+
+        # Generate band structure using phonopy
+        phonopy --readfc KPATH.phonopy -p -s
+        cd "$CURRENT_DIR"
+done

@@ -1,0 +1,58 @@
+# [0] Job Initialization
+ISTART      = INT             # Start job: 0 = new, 1 = restart from WAVECAR
+ICHARG      = INT             # Charge density treatment: 1 = atomic superposition, 11 = from CHGCAR
+
+# [1] Plane-Wave Cutoff
+ENCUT       = FLOAT           # Plane-wave energy cutoff (eV)
+
+# [2] Spin Settings
+ISPIN       = INT             # 1 = non-spin-polarized, 2 = spin-polarized
+MAGMOM      = SPECIES_FLOAT   # Initial magnetic moments per atom
+
+# [3] Electronic Convergence
+EDIFF       = FLOAT           # Electronic energy convergence (eV)
+EDIFFG      = FLOAT           # Force convergence (eV/Å)
+
+# [4] Precision & Core
+PREC        = Accurate        # Low | Normal | Accurate
+LASPH       = BOOL            # Non-spherical PAW corrections
+GGA_COMPAT  = BOOL            # Compatibility with older GGA potentials
+
+# [5] Functional & Mixing
+GGA         = PS              # GGA: PE, PS, RP
+VOSKOWN     = INT             # Vosko-Wilk-Nusair interpolation
+LMAXMIX     = INT             # Max l in charge density mixing
+
+# [6] Smearing
+ISMEAR      = INT             # Smearing method
+SIGMA       = FLOAT           # Smearing width (eV)
+
+# [7] SCF Loop
+NELM        = INT             # Max SCF cycles
+
+# [8] Ionic Relaxation / Phonon
+NSW         = INT             # Max ionic steps
+IBRION      = INT             # Ion dynamics: 5 = phonon finite diff
+ISIF        = INT             # Stress tensor and relaxation mode
+
+# [9] SCF Algorithm
+ALGO        = Damped          # SCF algorithm
+LDIAG       = BOOL            # Use subspace diagonalization
+
+# [10] Charge Mixing
+AMIX        = FLOAT
+BMIX        = FLOAT
+AMIX_MAG    = FLOAT
+BMIX_MAG    = FLOAT
+
+# [11] LDA+U
+LDAU        = BOOL
+LDAUTYPE    = INT
+LDAUL       = SPECIES_INT
+LDAUU       = SPECIES_FLOAT
+LDAUJ       = SPECIES_FLOAT
+LDAUPRINT   = INT
+
+# [12] Output
+LORBIT      = INT
+

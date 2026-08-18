@@ -1,0 +1,48 @@
+SYSTEM = t-CuO AFII vary_inplane (cold seed: ICHARG=2)
+
+# --- Job init ---
+ISTART     = 0
+ICHARG     = 2
+
+# --- Basis / spin ---
+PREC       = Accurate
+ENCUT      = 520
+ISPIN      = 2
+MAGMOM     = 1.3 -1.3 -1.3 1.3 -1.3 1.3 1.3 -1.3 -1.3 1.3 1.3 -1.3 1.3 -1.3 -1.3 1.3 -1.3 1.3 1.3 -1.3 1.3 -1.3 -1.3 1.3 -1.3 1.3 1.3 -1.3 1.3 -1.3 -1.3 1.3 32*0
+
+# --- Electronic convergence ---
+EDIFF      = 1E-6
+NELM       = 200
+NSW        = 0
+
+# --- Smearing ---
+ISMEAR     = 0
+SIGMA      = 0.20
+
+# --- Functional (PBEsol) + PAW ---
+GGA        = PS
+LASPH      = .TRUE.
+GGA_COMPAT = .FALSE.
+VOSKOWN    = 1
+LMAXMIX    = 4
+LORBIT     = 11
+
+# --- Mixing ---
+AMIX       = 0.2
+BMIX       = 0.0001
+AMIX_MAG   = 0.6
+BMIX_MAG   = 0.001
+
+# --- DFT+U (Dudarev, U=7 on Cu-d) ---
+LDAU       = .TRUE.
+LDAUTYPE   = 2
+LDAUL      = 2 -1
+LDAUU      = 7.00 0
+LDAUJ      = 0 0
+LDAUPRINT  = 1
+
+# --- I/O + parallel ---
+LCHARG     = .TRUE.
+LWAVE      = .FALSE.
+NSIM       = 4
+NCORE      = 16
