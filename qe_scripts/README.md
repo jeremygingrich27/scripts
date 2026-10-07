@@ -488,7 +488,8 @@ Signed-off pseudocode, 2026-10-05. One slab per call; takes the output of
 ```
 build_rocksalt_slab.py --bulk BULK_DIR --layers N --pseudos pseudos --out CASE/scf.in \
                        [--bottom Sc|N] [--supercell "n m"] [--vacuum 20] \
-                       [--relax-free F] [--dipole auto|on|off]
+                       [--relax-free F] [--dipole auto|on|off] \
+                       [--forc-thr 1.0d-5 --etot-thr 1.0d-6] [--kmesh "12 12"]
 ```
 
 - Planes are atoms sharing a z (within 0.05 A). (001): every plane is
@@ -502,6 +503,10 @@ build_rocksalt_slab.py --bulk BULK_DIR --layers N --pseudos pseudos --out CASE/s
   `pseudo_dir` = absolute `--pseudos`. K-mesh = bulk in-plane mesh / supercell
   (rounded up), kz = 1.
 - `--relax-free F`: outer F planes per side free (calculation='relax'); 0 = scf.
+  `--forc-thr` / `--etot-thr` (amendment 2026-10-07; defaults 1.0d-5 / 1.0d-6, as
+  `build_slab.py`) are written into relax inputs only.
+- `--kmesh "k1 k2"` (amendment 2026-10-07) sets the in-plane mesh directly (kz = 1); without it
+  the mesh is the bulk in-plane mesh / supercell.
 - Prints the plane list, composition, symmetry and dipole state.
 
 ## Harvesting pair curves (`harvest_pair_curves.py`)

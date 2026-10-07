@@ -7,7 +7,8 @@ loop builds a case tree. Inputs only: no running, no post-processing.
 
     build_rocksalt_slab.py --bulk BULK_DIR --layers N --pseudos pseudos --out CASE/scf.in \
                            [--bottom Sc|N] [--supercell "n m"] [--vacuum 20] \
-                           [--relax-free F] [--dipole auto|on|off]
+                           [--relax-free F] [--dipole auto|on|off] \
+                           [--forc-thr 1.0d-5 --etot-thr 1.0d-6] [--kmesh "12 12"]
 
 Planes: bulk cells stacked along c, atoms grouped by z. The slab is N
 consecutive planes.
@@ -22,6 +23,11 @@ F planes of each side free (1 1 1) and the rest fixed (0 0 0); F = 0 gives
 calculation='scf'. --dipole auto turns the sawtooth dipole correction
 (make_deposition.add_dipole) on only when the slab is not symmetric under
 z -> -z (mirror or inversion, up to an in-plane shift).
+
+--forc-thr / --etot-thr (amendment 2026-10-07; defaults 1.0d-5 / 1.0d-6, as
+build_slab.py) set forc_conv_thr / etot_conv_thr in relax inputs only.
+--kmesh "k1 k2" (amendment 2026-10-07) sets the in-plane mesh directly (kz = 1),
+replacing the bulk-mesh / supercell default.
 
 Everything else (ecut, U, smearing, species) is copied from BULK_DIR/scf.in.
 pseudo_dir is the absolute path of --pseudos, so build on the machine that runs
@@ -105,6 +111,10 @@ def main(argv=None):
                    help="free planes per side; 0 = unrelaxed scf (default 0)")
     p.add_argument("--dipole", choices=["auto", "on", "off"], default="auto",
                    help="dipole correction (default auto: on if the slab is not symmetric)")
+    p.add_argument("--forc-thr", default="1.0d-5", help="relax forc_conv_thr (default 1.0d-5)")
+    p.add_argument("--etot-thr", default="1.0d-6", help="relax etot_conv_thr (default 1.0d-6)")
+    p.add_argument("--kmesh", help='in-plane mesh "k1 k2" (z gets 1); default: bulk mesh / supercell')
+
     args = p.parse_args(argv)
 
     # 1. read the reoriented bulk
@@ -175,11 +185,18 @@ def main(argv=None):
     text = qi.set_pseudo_dir(text, pseudos)
     text = md.set_atoms(text, [(el, [fx, fy, fz], flags(k)) for el, fx, fy, fz, k in rows])
     text = qi.set_cell(text, new_cell)
-    k_bulk = get_kmesh(template)
-    k_new = [math.ceil(k_bulk[0] / n), math.ceil(k_bulk[1] / m), 1]
+    if args.kmesh:
+        if len(args.kmesh.split()) != 2:
+            sys.exit('--kmesh takes two numbers, e.g. "12 12"')
+        k_new = [int(k) for k in args.kmesh.split()] + [1]
+    else:
+        k_bulk = get_kmesh(template)
+        k_new = [math.ceil(k_bulk[0] / n), math.ceil(k_bulk[1] / m), 1]
     text = qi.set_kpoints(text, k_new)
     if relax:
         text = qi.make_relax(text, calculation="relax")
+        text = qi.set_key(text, "control", "forc_conv_thr", args.forc_thr)
+        text = qi.set_key(text, "control", "etot_conv_thr", args.etot_thr)
     else:
         text = qi.set_key(text, "control", "calculation", "'scf'")
     if dipole:
