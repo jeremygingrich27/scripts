@@ -24,7 +24,7 @@ while true; do
 
     # clean stop before the walltime
     left=$(minutes_left)
-    if (( left < STOPCAR_MARGIN_MIN + 30 )); then resubmit job_relax.sh; exit 0; fi
+    if (( left < STOPCAR_MARGIN_MIN + 30 )); then out_of_time; exit 0; fi
     ( sleep $(( (left - STOPCAR_MARGIN_MIN) * 60 )); echo "LSTOP = .TRUE." > STOPCAR ) > /dev/null 2>&1 &
     timer=$!
     stop_timer() { pkill -P $timer 2>/dev/null; kill $timer 2>/dev/null; }   # the sleep, then its shell
@@ -36,7 +36,7 @@ while true; do
     case $verdict in
         CONVERGED) cp CONTCAR "$NODE/relax/CONTCAR_final"; touch "$NODE/relax/DONE"; break ;;
         HALT*)     stop_branch "relax: ${verdict#HALT } ($cur)" ;;
-        CONTINUE)  [[ -f STOPCAR ]] && { resubmit job_relax.sh; exit 0; } ;;
+        CONTINUE)  [[ -f STOPCAR ]] && { out_of_time; exit 0; } ;;
     esac
 done
 

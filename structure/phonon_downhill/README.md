@@ -3,21 +3,25 @@
 Downhill structure search for t-CuO by following unstable phonons:
 relax -> findsym -> phonons -> unstable modes -> scan each direction to its minimum -> relax the minimum -> ...
 until a structure has no unstable mode (STABLE) or a branch is stopped (STOPPED, with the reason).
-Each job ends by calling the driver, so the tree runs itself on LS6. Design and every decision:
-`pseudocode.md`.
+**TACC does not allow `sbatch` from compute nodes**, so jobs never submit. A job does its VASP runs and the cheap
+work that follows (phonon analysis, findsym, phonopy setup, new scan / round folders), then stops. The tree moves
+on when `downhill.sh advance` is run on a login node (decided 2026-10-18: when Jeremy checks). Design and every
+decision: `pseudocode.md`.
 
 ## Use
 
 ```bash
 DH=$HOME/scripts/structure/phonon_downhill
 $DH/downhill.sh init   PHASE_ROOT START_DIR NAME_PREFIX   # files only, submits nothing
-$DH/downhill.sh next   PHASE_ROOT/round_0                 # starts the tree (submits round 0 phonons)
-$DH/downhill.sh status PHASE_ROOT                         # one line per round and scan
+$DH/downhill.sh advance PHASE_ROOT                        # login node: submit everything that is ready
+$DH/downhill.sh status PHASE_ROOT                         # one line per round and scan, with job states
 ```
 
 - `START_DIR`: the relaxed start cell. `POSCAR`, `MAGMOM` (phonopy format `MAGMOM = ...`), and the phonopy
   disp-run `INCAR`, `KPOINTS`, `POTCAR`.
 - `NAME_PREFIX`: start of the job names, e.g. `tCuO-AFII-comp_pbe` -> `tCuO-AFII-comp_pbe_dh-r1-SM4-Pnma-relax`.
+- `advance` is safe to repeat: a folder whose job (its `JOBID` file) is still queued or running is skipped, and
+  work that ran out of walltime is simply submitted again (finished points / displacements are skipped).
 - To stop a branch by hand: put a file `STOPPED` (with a reason) in its `round_N` folder; jobs already queued
   still run, but the driver will not go further there.
 
@@ -45,7 +49,7 @@ PHASE_ROOT/
         phonons/ ...
         scan_.../round_2/ ...
 ```
-Marker files: `COMPLETED` (a VASP run finished), `MOMENTS_LOST` (a scan point lost AFII),
+Marker files: `JOBID` (last job submitted for that folder), `COMPLETED` (a VASP run finished), `MOMENTS_LOST` (a scan point lost AFII),
 `STABLE`, `STOPPED` (branch ended; the file says why), `relax/DONE`, `symmetry/DONE`, `phonons/FAILED`.
 CHGCARs are moved to `$SCRATCH/phonon_downhill/<job id>/<run path>/` (`CHGCAR.location` in each run).
 
@@ -53,9 +57,9 @@ CHGCARs are moved to `$SCRATCH/phonon_downhill/<job id>/<run path>/` (`CHGCAR.lo
 
 | script | does |
 |---|---|
-| `downhill.sh` | driver: init / next / status; decides the next step of a round and submits it |
+| `downhill.sh` | driver: init / next / advance / status; decides the next step of a round; submits only on a login node |
 | `downhill.conf` | every setting, marked (J) Jeremy's decision or (C) Claude's default |
-| `job_common.sh` | shared job functions: run VASP, move CHGCAR, walltime check, resubmit, stop a branch |
+| `job_common.sh` | shared job functions: run VASP, move CHGCAR, walltime check, stop a branch |
 | `job_relax.sh` | relax rounds until one converges in its first ionic step; STOPCAR before the walltime |
 | `job_phonons.sh` | runs the phonopy displacements |
 | `job_scan.sh` | one direction: steps u until the minimum is bracketed, check point, seeds the next round |

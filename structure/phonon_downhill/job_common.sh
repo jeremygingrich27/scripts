@@ -35,12 +35,10 @@ run_vasp() {
     return $rc
 }
 
-# submit this same job again (same NODE), from the folder it was submitted from
-resubmit() {
-    echo "out of walltime: resubmitting $SLURM_JOB_NAME"
-    cd "$SLURM_SUBMIT_DIR" && sbatch -J "$SLURM_JOB_NAME" -t "$(walltime "$WALL_MIN")" \
-        -N "$NODES" -n "$TASKS" -p "$QUEUE" -A "$ALLOC" -o "%x.%j.out" \
-        --export=ALL,DH="$DH",NODE="$NODE",WALL_MIN="$WALL_MIN" "$DH/$1"
+# out of walltime: stop cleanly; `downhill.sh advance` (login node) submits the rest
+# (TACC does not allow sbatch from a compute node)
+out_of_time() {
+    echo "out of walltime: stopping; run downhill.sh advance on a login node to continue"
 }
 
 walltime() { printf "%02d:%02d:00" $(( $1 / 60 )) $(( $1 % 60 )); }

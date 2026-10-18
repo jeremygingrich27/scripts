@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# phonon_downhill driver.  Each job ends by calling `downhill.sh next`, so the tree runs itself.
+# phonon_downhill driver.
+#
+# TACC does not allow sbatch from compute nodes, so jobs never submit.  A job ends by
+# calling `downhill.sh next`, which does the cheap work in place (phonon analysis,
+# findsym, phonopy setup, new scan / round folders) and leaves the submitting to
+# `downhill.sh advance`, run on a LOGIN node whenever the trees are checked.
 #
 #   downhill.sh init   PHASE_ROOT START_DIR NAME_PREFIX
 #       PHASE_ROOT   new folder for this tree (e.g. .../downhill/pbe_AFII_compressed)
@@ -7,8 +12,10 @@
 #                    disp-run INCAR (becomes INCAR.sp / INCAR.relax via make_incars.py)
 #       NAME_PREFIX  job name start, e.g. tCuO-AFII-comp_pbe
 #       Only sets up files; submits nothing.
-#   downhill.sh next   ROUND_DIR      do / submit the next step of one round
-#   downhill.sh status PHASE_ROOT     one line per round and scan
+#   downhill.sh next    ROUND_DIR     do the next step of one round (submits only on a login node)
+#   downhill.sh advance PHASE_ROOT    login node: run `next` on every unfinished round, submitting
+#                                     whatever has no job queued or running (safe to repeat)
+#   downhill.sh status  PHASE_ROOT    one line per round and scan
 set -e
 export DH=${DH:-$HOME/scripts/structure/phonon_downhill}
 # phonopy 4's Rust thread pool cannot start under the LS6 login-node thread limit; one thread is plenty here
@@ -28,13 +35,25 @@ job_name() {
     echo "$(cat "$root/inputs/NAME_PREFIX")_${tail//_/-}"
 }
 
-# submit JOB_SCRIPT for NODE with WALL minutes, from inside NODE
+# true if NODE's last submitted job (NODE/JOBID) is still queued or running
+live_job() { [[ -f $1/JOBID ]] && [[ -n $(squeue -h -j "$(cat "$1/JOBID")" 2>/dev/null) ]]; }
+
+# submit JOB_SCRIPT for NODE with WALL minutes, from inside NODE; the job id goes to NODE/JOBID.
+# Skipped if NODE already has a live job, or if called inside a job (TACC forbids it there).
 submit() {
     local script=$1 node=$2 wall=$3 step=$4
+    if live_job "$node"; then echo "${node##*/}: job $(cat "$node/JOBID") already queued/running"; return 0; fi
+    if [[ -n $SLURM_JOB_ID ]]; then echo "${node##*/}: $step ready; submit with downhill.sh advance (login node)"; return 0; fi
     (( wall > MAX_WALL_H * 60 )) && wall=$(( MAX_WALL_H * 60 ))
-    ( cd "$node" && sbatch -J "$(job_name "$node" "$step")" -t "$(printf "%02d:%02d:00" $((wall/60)) $((wall%60)))" \
+    local out
+    out=$(cd "$node" && sbatch -J "$(job_name "$node" "$step")" -t "$(printf "%02d:%02d:00" $((wall/60)) $((wall%60)))" \
         -N "$NODES" -n "$TASKS" -p "$QUEUE" -A "$ALLOC" -o "%x.%j.out" \
-        --export=ALL,DH="$DH",NODE="$node",WALL_MIN="$wall" "$DH/$script" )
+        --export=ALL,DH="$DH",NODE="$node",WALL_MIN="$wall" "$DH/$script" 2>&1)
+    # TACC prints a banner too: keep only the id from "Submitted batch job N"
+    local id; id=$(echo "$out" | grep -o 'Submitted batch job [0-9]*' | grep -o '[0-9]*$')
+    if [[ -z $id ]]; then echo "${node##*/}: sbatch FAILED:"; echo "$out" | tail -3; return 1; fi
+    echo "$id" > "$node/JOBID"
+    echo "${node##*/}: submitted $step job $id"
 }
 
 cmd_init() {
@@ -91,19 +110,30 @@ cmd_next() {
     for p in "$node"/phonons/directions/*.npy; do
         local name; name=$(basename "$p" .npy)
         local scan=$node/scan_$name
-        [[ -d $scan ]] && continue
+        [[ -f $scan/STOPPED ]] && continue
+        ls -d "$scan"/round_* > /dev/null 2>&1 && continue          # minimum found; its round carries on
         mkdir -p "$scan"
-        cp "$p" "$scan/pattern.npy"
-        cp "$node/phonons/POSCAR" "$scan/start.POSCAR"
+        [[ -f $scan/pattern.npy ]] || cp "$p" "$scan/pattern.npy"
+        [[ -f $scan/start.POSCAR ]] || cp "$node/phonons/POSCAR" "$scan/start.POSCAR"
         submit job_scan.sh "$scan" $(( SCAN_POINTS_PER_JOB * SP_MINUTES + 30 )) scan
+    done
+}
+
+cmd_advance() {
+    [[ -n $SLURM_JOB_ID ]] && { echo "advance must run on a login node"; exit 1; }
+    local root; root=$(cd "$1" && pwd)
+    find "$root" -type d -name 'round_*' | sort | while read -r d; do
+        ( cmd_next "$d" ) || echo "${d#$root/}: next FAILED (see above)"
     done
 }
 
 cmd_status() {
     find "$1" -maxdepth 40 -type d \( -name 'round_*' -o -name 'scan_*' \) | sort | while read -r d; do
-        local state="running/queued"
+        local state="waiting (nothing queued: run advance)"
         [[ -f $d/STABLE ]] && state="STABLE: $(cat "$d/STABLE")"
         [[ -f $d/STOPPED ]] && state="STOPPED: $(cat "$d/STOPPED")"
+        [[ $d == */round_* ]] && ls -d "$d"/scan_* > /dev/null 2>&1 && state="phonons done, scanning (below)"
+        live_job "$d" && state="job $(cat "$d/JOBID") $(squeue -h -j "$(cat "$d/JOBID")" -o %T)"
         [[ -f $d/scan.dat ]] && state="$state; $(($(wc -l < "$d/scan.dat") - 1)) points"
         ls -d "$d"/round_* > /dev/null 2>&1 && [[ $d == */scan_* ]] && state="minimum found -> $(cat "$d"/round_*/SOURCE)"
         echo "${d#$1/}: $state"
@@ -112,7 +142,8 @@ cmd_status() {
 
 case $1 in
     init)   shift; cmd_init "$@" ;;
-    next)   shift; cmd_next "$@" ;;
+    next)    shift; cmd_next "$@" ;;
+    advance) shift; cmd_advance "$@" ;;
     status) shift; cmd_status "$@" ;;
     *)      sed -n '2,14p' "$0"; exit 1 ;;
 esac

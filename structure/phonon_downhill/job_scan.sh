@@ -25,7 +25,7 @@ while true; do
         *)     stop_branch "scan: unexpected scan_status output '$action'" ;;
     esac
 
-    if (( $(minutes_left) < SP_MINUTES + 10 )); then resubmit job_scan.sh; exit 0; fi
+    if (( $(minutes_left) < SP_MINUTES + 10 )); then out_of_time; exit 0; fi
     mkdir -p "$pt"
     python3 "$DH/make_scan_point.py" start.POSCAR pattern.npy "$2" "$pt/POSCAR"
     cp "$root/inputs/INCAR.sp" "$pt/INCAR"

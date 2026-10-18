@@ -5,7 +5,7 @@ ph=$NODE/phonons
 
 for d in "$ph"/disp-*; do
     [[ -f $d/COMPLETED ]] && continue
-    if (( $(minutes_left) < SP_MINUTES + 10 )); then resubmit job_phonons.sh; exit 0; fi
+    if (( $(minutes_left) < SP_MINUTES + 10 )); then out_of_time; exit 0; fi
     echo "running $d"
     cd "$d"
     run_vasp || { touch "$ph/FAILED"; stop_branch "VASP failed in $d"; }
